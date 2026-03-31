@@ -77,6 +77,13 @@ class Plugin implements PluginInterface, EventSubscriberInterface
         $thresholdDate = (new \DateTimeImmutable())->modify("-{$this->minHours} hours");
 
         foreach ($packages as $package) {
+
+            // Never block the plugin itself to prevent a lock-out scenario
+            if ($package->getName() === 'cotonet/soak-time') {
+                $filteredPackages[] = $package;
+                continue;
+            }
+
             $releaseDate = $package->getReleaseDate();
             
             // If the package has a release date and it's newer than our threshold
