@@ -61,6 +61,12 @@ class Plugin implements PluginInterface, EventSubscriberInterface
      */
     public function onPrePoolCreate(PrePoolCreateEvent $event): void
     {
+         // Emergency bypass using environment variable
+        if (getenv('SOAK_TIME_SKIP') === '1') {
+            $this->io->write("<warning>[Soak Time] Emergency bypass detected! Skipping filters.</warning>");
+            return;
+        }
+        
         $this->io->write("<info>[Soak Time] Inspecting packages (requiring minimum age of {$this->minHours} hours)...</info>");
 
         $packages = $event->getPackages();
