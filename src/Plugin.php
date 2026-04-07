@@ -18,78 +18,67 @@ class Plugin implements PluginInterface, EventSubscriberInterface
     protected $io;
     
     /** @var int Minimum package age in hours */
-    protected $minHours = 168; // Default: 168 hours (7 days)
+    protected $minHours = 168;
 
-    /**
-     * Called when the plugin is activated.
-     */
+    /** @var array<string> Packages to always allow */
+    protected $whitelist = [
+        'cotonet/soak-time' // Always whitelist self to prevent lock-out
+    ];
+
     public function activate(Composer $composer, IOInterface $io): void
     {
         $this->composer = $composer;
         $this->io = $io;
 
-        // Fetch custom configuration from the user's composer.json
         $extra = $composer->getPackage()->getExtra();
+        
+        // Load custom hours if set
         if (isset($extra['soak-time-hours'])) {
             $this->minHours = (int) $extra['soak-time-hours'];
         }
+
+        // Load custom whitelist if set
+        if (isset($extra['soak-time-whitelist']) && is_array($extra['soak-time-whitelist'])) {
+            // Merge user whitelist with our default whitelist
+            $this->whitelist = array_merge($this->whitelist, $extra['soak-time-whitelist']);
+        }
     }
 
-    public function deactivate(Composer $composer, IOInterface $io): void 
-    {
-        // Not needed for this plugin
-    }
+    public function deactivate(Composer $composer, IOInterface $io): void {}
+    public function uninstall(Composer $composer, IOInterface $io): void {}
 
-    public function uninstall(Composer $composer, IOInterface $io): void 
-    {
-        // Not needed for this plugin
-    }
-
-    /**
-     * Subscribe to specific Composer events.
-     */
     public static function getSubscribedEvents(): array
     {
         return [
-            // Hook into the exact moment before the solver starts calculating dependencies
             PluginEvents::PRE_POOL_CREATE => 'onPrePoolCreate',
         ];
     }
 
-    /**
-     * Intercepts the package pool creation to filter out recent releases.
-     */
     public function onPrePoolCreate(PrePoolCreateEvent $event): void
     {
-         // Emergency bypass using environment variable
         if (getenv('SOAK_TIME_SKIP') === '1') {
             $this->io->write("<warning>[Soak Time] Emergency bypass detected! Skipping filters.</warning>");
             return;
         }
-        
+
         $this->io->write("<info>[Soak Time] Inspecting packages (requiring minimum age of {$this->minHours} hours)...</info>");
 
         $packages = $event->getPackages();
         $filteredPackages = [];
         $droppedCount = 0;
         
-        // Calculate the exact date and time threshold
         $thresholdDate = (new \DateTimeImmutable())->modify("-{$this->minHours} hours");
 
         foreach ($packages as $package) {
-
-            // Never block the plugin itself to prevent a lock-out scenario
-            if ($package->getName() === 'cotonet/soak-time') {
+            // Check if the package is in our whitelist
+            if (in_array($package->getName(), $this->whitelist, true)) {
                 $filteredPackages[] = $package;
                 continue;
             }
 
             $releaseDate = $package->getReleaseDate();
             
-            // If the package has a release date and it's newer than our threshold
             if ($releaseDate !== null && $releaseDate > $thresholdDate) {
-                
-                // If the user runs 'composer update -v', print which packages are being dropped
                 if ($this->io->isVerbose()) {
                     $this->io->write(sprintf(
                         "  - <warning>Dropping %s v%s (released %s)</warning>", 
@@ -98,12 +87,9 @@ class Plugin implements PluginInterface, EventSubscriberInterface
                         $releaseDate->format('Y-m-d H:i:s')
                     ));
                 }
-                
                 $droppedCount++;
-                continue; // Skip adding this package to the safe list
+                continue;
             }
-            
-            // Package is safe (older than threshold or has no date, e.g., local dev paths)
             $filteredPackages[] = $package;
         }
 
@@ -111,7 +97,6 @@ class Plugin implements PluginInterface, EventSubscriberInterface
             $this->io->write("<info>[Soak Time] Successfully filtered out {$droppedCount} recent package version(s).</info>");
         }
 
-        // Replace the Composer pool with our clean, filtered list
         $event->setPackages($filteredPackages);
     }
 }
