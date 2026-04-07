@@ -37,6 +37,22 @@ Customize this in the `extra` section of your project's `composer.json`:
 }
 ```
 
+### Whitelisting Packages
+
+Some packages, like security advisories or internal company packages, need to be updated constantly and should bypass the soak time filter. You can allow them permanently by adding an array of package names to `soak-time-whitelist` in your `composer.json`:
+
+```json
+{
+    "extra": {
+        "soak-time-hours": 168,
+        "soak-time-whitelist": [
+            "roave/security-advisories",
+            "your-company/internal-package"
+        ]
+    }
+}
+```
+
 ## 🚨 Emergency Bypass (Security Patches)
 
 If you need to install a critical security patch that was released just a few hours ago, you can bypass the filter using the `SOAK_TIME_SKIP` environment variable:
